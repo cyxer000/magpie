@@ -194,12 +194,9 @@ task:
 	}
 }
 
-// The model picker offers the models of the providers the user added to
-// models.yml, beside models.dev's for the current provider, spelled as
-// ownOptions spells them (the name as the note): not magpie's own entry, nor
-// a provider whose models omp only discovers at run time. A model named in
-// both keeps what models.dev knows of it.
-func TestOmpOwnModels(t *testing.T) {
+// ompModelsHome is a home whose omp is on zai/glm-5, with models.yml
+// providers of the user's own, one only discovered, and magpie's entry.
+func ompModelsHome(t *testing.T) string {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
@@ -236,7 +233,12 @@ func TestOmpOwnModels(t *testing.T) {
     models:
       - id: deepseek/pro
 `), 0o644)
+	return home
+}
 
+// ompOptions is the model picker's options by value, each offered once.
+func ompOptions(t *testing.T, home string) map[string]Option {
+	t.Helper()
 	opts := omp(home).Field("model").Options(map[string]string{"model": "zai/glm-5"})
 	byValue := map[string]Option{}
 	for _, o := range opts {
@@ -245,20 +247,124 @@ func TestOmpOwnModels(t *testing.T) {
 		}
 		byValue[o.Value] = o
 	}
+	return byValue
+}
+
+// With no answer from omp (under test there is none), the model picker
+// offers the models of the providers the user added to models.yml, beside
+// models.dev's for the current provider, spelled as ownOptions spells them
+// (the name as the note): not magpie's own entry, nor a provider whose
+// models omp only discovers at run time. A model named in both keeps what
+// models.dev knows of it.
+func TestOmpOwnModels(t *testing.T) {
+	home := ompModelsHome(t)
+	byValue := ompOptions(t, home)
 	if o := byValue["codemaker/claude-opus-5-5"]; o.Note != "Claude Opus 5.5" || o.Label != "" || o.Group != "codemaker" {
-		t.Fatalf("codemaker model: %+v in %+v", o, opts)
+		t.Fatalf("codemaker model: %+v in %+v", o, byValue)
 	}
 	if o, ok := byValue["codemaker/glm-5"]; !ok || o.Note != "" {
-		t.Fatalf("model without a name: %+v in %+v", o, opts)
+		t.Fatalf("model without a name: %+v in %+v", o, byValue)
 	}
 	// models.yml's zai glm-5 has no name; models.dev's has one
 	if o := byValue["zai/glm-5"]; o.Note != "GLM-5" || o.Icon == "" {
-		t.Fatalf("zai/glm-5 lost models.dev's name or icon: %+v in %+v", o, opts)
+		t.Fatalf("zai/glm-5 lost models.dev's name or icon: %+v in %+v", o, byValue)
 	}
 	// magpie has no provider here, so its entry's model comes from nowhere else
 	for v := range byValue {
 		if strings.HasPrefix(v, "lan/") || v == "magpie/deepseek/pro" {
-			t.Fatalf("%s offered: %+v", v, opts)
+			t.Fatalf("%s offered: %+v", v, byValue)
 		}
+	}
+}
+
+// ompAsked waits for the ask of omp under way for home, if one is.
+func ompAsked(home string) {
+	ompLists.Lock()
+	var done chan struct{}
+	if l := ompLists.m[filepath.Join(home, ".omp", "agent")]; l != nil {
+		done = l.asking
+	}
+	ompLists.Unlock()
+	if done != nil {
+		<-done
+	}
+}
+
+// The model picker offers what omp itself lists as available — the
+// providers built into it that are signed in too — rather than models.yml;
+// never magpie's entry, whose models are offered as magpie's. A model omp
+// lists without a name keeps models.dev's. omp is asked behind the look:
+// the first has models.yml's, and omp isn't asked again until models.yml
+// changes. An omp that can't answer leaves models.yml's.
+func TestOmpListedModels(t *testing.T) {
+	home := ompModelsHome(t)
+	out, calls := `{"models":[
+{"provider":"anthropic","kind":"chat","id":"claude-opus-5","selector":"anthropic/claude-opus-5","name":"Claude Opus 5"},
+{"provider":"codemaker","kind":"chat","id":"glm-5","selector":"codemaker/glm-5","name":""},
+{"provider":"cursor","kind":"chat","id":"auto","selector":"cursor/auto","name":"Auto"},
+{"provider":"magpie","kind":"chat","id":"deepseek/pro","selector":"magpie/deepseek/pro","name":"DeepSeek Pro"},
+{"provider":"zai","kind":"chat","id":"glm-5","selector":"zai/glm-5","name":""}]}`, 0
+	old := runOmpModels
+	runOmpModels = func() ([]byte, error) { calls++; return []byte(out), nil }
+	t.Cleanup(func() { runOmpModels = old })
+
+	// the first look doesn't wait for omp
+	byValue := ompOptions(t, home)
+	if _, ok := byValue["anthropic/claude-opus-5"]; ok {
+		t.Fatalf("waited for omp: %+v", byValue)
+	}
+	if _, ok := byValue["codemaker/claude-opus-5-5"]; !ok {
+		t.Fatalf("models.yml's not offered before omp answered: %+v", byValue)
+	}
+	ompAsked(home)
+
+	byValue = ompOptions(t, home)
+	if o := byValue["anthropic/claude-opus-5"]; o.Note != "Claude Opus 5" || o.Group != "anthropic" {
+		t.Fatalf("a provider built into omp: %+v in %+v", o, byValue)
+	}
+	if o, ok := byValue["codemaker/glm-5"]; !ok || o.Group != "codemaker" {
+		t.Fatalf("a model without a name: %+v in %+v", o, byValue)
+	}
+	if _, ok := byValue["cursor/auto"]; !ok {
+		t.Fatalf("cursor/auto missing: %+v", byValue)
+	}
+	if o := byValue["zai/glm-5"]; o.Note != "GLM-5" || o.Icon == "" {
+		t.Fatalf("zai/glm-5 lost models.dev's name or icon: %+v in %+v", o, byValue)
+	}
+	// what omp doesn't list isn't offered, though models.yml names it
+	for _, v := range []string{"magpie/deepseek/pro", "codemaker/claude-opus-5-5"} {
+		if _, ok := byValue[v]; ok {
+			t.Fatalf("%s offered: %+v", v, byValue)
+		}
+	}
+	if ompAsked(home); calls != 1 {
+		t.Fatalf("omp asked %d times with nothing changed", calls)
+	}
+
+	// a provider added to models.yml: what omp said is still served, and
+	// omp is asked again behind it
+	models := filepath.Join(home, ".omp", "agent", "models.yml")
+	b, _ := os.ReadFile(models)
+	os.WriteFile(models, append(b, "  added:\n    models:\n      - id: new\n"...), 0o644)
+	out = strings.Replace(out, `"models":[`, `"models":[{"provider":"added","id":"new","selector":"added/new"},`, 1)
+	if _, ok := ompOptions(t, home)["anthropic/claude-opus-5"]; !ok {
+		t.Fatal("omp's answer dropped while it is asked again")
+	}
+	ompAsked(home)
+	if _, ok := ompOptions(t, home)["added/new"]; !ok || calls != 2 {
+		t.Fatalf("omp not asked again after models.yml changed: %d calls", calls)
+	}
+
+	// an omp that prints something else leaves models.yml's
+	home = ompModelsHome(t)
+	out = "not json"
+	ompOptions(t, home)
+	ompAsked(home)
+	byValue = ompOptions(t, home)
+	if _, ok := byValue["codemaker/claude-opus-5-5"]; !ok {
+		t.Fatalf("models.yml's not offered: %+v", byValue)
+	}
+	if _, ok := byValue["anthropic/claude-opus-5"]; ok {
+		t.Fatalf("an answer omp didn't give: %+v", byValue)
 	}
 }
