@@ -265,9 +265,10 @@ func ompProvider() ompProviderEntry {
 
 // ompOwnOptions lists the models of the providers the user added to omp's
 // models.yml, then the ones models.dev knows for the current value's
-// provider, each value once. A provider with only discovery has its models
-// listed by omp asking it at run time, out of magpie's sight, so it offers
-// none here.
+// provider, spelled as ownOptions spells them (the model's name as the
+// note). A value offered twice is offered once, with the name and icon
+// either one had. A provider with only discovery has its models listed by
+// omp asking it at run time, out of magpie's sight, so it offers none here.
 func ompOwnOptions(modelsFile, cur string) []Option {
 	var f struct {
 		Providers map[string]struct {
@@ -287,30 +288,35 @@ func ompOwnOptions(modelsFile, cur string) []Option {
 		}
 	}
 	sort.Strings(providers)
-	seen := map[string]bool{}
-	var out []Option
+	var opts []Option
 	for _, p := range providers {
 		name := catalog.ProviderName(p)
 		if name == "" {
 			name = p
 		}
 		for _, m := range f.Providers[p].Models {
-			v := p + "/" + m.ID
-			if m.ID == "" || seen[v] {
-				continue
+			if m.ID != "" {
+				opts = append(opts, Option{Value: p + "/" + m.ID, Note: m.Name, Icon: modelIcon(p, m.ID), Group: name, GroupIcon: providerIcon(p)})
 			}
-			seen[v] = true
-			label := m.Name
-			if label == "" {
-				label = m.ID
-			}
-			out = append(out, Option{Value: v, Label: label, Icon: modelIcon(p, m.ID), Group: name, GroupIcon: providerIcon(p)})
 		}
 	}
-	for _, o := range ownOptions("", cur) {
-		if !seen[o.Value] {
-			seen[o.Value] = true
+	at := map[string]int{}
+	var out []Option
+	for _, o := range append(opts, ownOptions("", cur)...) {
+		i, dup := at[o.Value]
+		if !dup {
+			at[o.Value] = len(out)
 			out = append(out, o)
+			continue
+		}
+		if out[i].Note == "" {
+			out[i].Note = o.Note
+		}
+		if out[i].Icon == "" {
+			out[i].Icon = o.Icon
+		}
+		if out[i].GroupIcon == "" {
+			out[i].GroupIcon = o.GroupIcon
 		}
 	}
 	return out

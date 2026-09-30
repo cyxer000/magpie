@@ -195,8 +195,10 @@ task:
 }
 
 // The model picker offers the models of the providers the user added to
-// models.yml, beside models.dev's for the current provider: not magpie's own
-// entry, nor a provider whose models omp only discovers at run time.
+// models.yml, beside models.dev's for the current provider, spelled as
+// ownOptions spells them (the name as the note): not magpie's own entry, nor
+// a provider whose models omp only discovers at run time. A model named in
+// both keeps what models.dev knows of it.
 func TestOmpOwnModels(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
@@ -243,14 +245,15 @@ func TestOmpOwnModels(t *testing.T) {
 		}
 		byValue[o.Value] = o
 	}
-	if o := byValue["codemaker/claude-opus-5-5"]; o.Label != "Claude Opus 5.5" || o.Group != "codemaker" {
+	if o := byValue["codemaker/claude-opus-5-5"]; o.Note != "Claude Opus 5.5" || o.Label != "" || o.Group != "codemaker" {
 		t.Fatalf("codemaker model: %+v in %+v", o, opts)
 	}
-	if o := byValue["codemaker/glm-5"]; o.Label != "glm-5" {
+	if o, ok := byValue["codemaker/glm-5"]; !ok || o.Note != "" {
 		t.Fatalf("model without a name: %+v in %+v", o, opts)
 	}
-	if _, ok := byValue["zai/glm-5"]; !ok {
-		t.Fatalf("the current provider's models.dev model is missing: %+v", opts)
+	// models.yml's zai glm-5 has no name; models.dev's has one
+	if o := byValue["zai/glm-5"]; o.Note != "GLM-5" || o.Icon == "" {
+		t.Fatalf("zai/glm-5 lost models.dev's name or icon: %+v in %+v", o, opts)
 	}
 	// magpie has no provider here, so its entry's model comes from nowhere else
 	for v := range byValue {
