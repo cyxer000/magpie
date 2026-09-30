@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yetone/magpie/internal/catalog"
 	"github.com/yetone/magpie/internal/edit"
 	"github.com/yetone/magpie/internal/provider"
 	"github.com/yetone/magpie/internal/usage"
@@ -602,5 +603,71 @@ func TestOmpListRoleRenamed(t *testing.T) {
 	b, _ = os.ReadFile(configPath)
 	if !strings.Contains(string(b), "slow: [magpie/ds/flash, openai/gpt-6]") {
 		t.Fatalf("reset:\n%s", b)
+	}
+}
+
+// The model picker offers the models of the providers the user added to
+// models.yml, beside models.dev's for the current provider: not magpie's own
+// entry, nor a provider whose models omp only discovers at run time.
+func TestOmpOwnModels(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	t.Setenv("XDG_CACHE_HOME", filepath.Join(home, ".cache"))
+	for _, k := range []string{"PI_CODING_AGENT_DIR", "PI_CONFIG_DIR", "OMP_PROFILE", "PI_PROFILE"} {
+		t.Setenv(k, "")
+	}
+	os.MkdirAll(filepath.Dir(catalog.CachePath()), 0o755)
+	os.WriteFile(catalog.CachePath(), []byte(`{"zai":{"name":"Z.AI","models":{"glm-5":{"id":"glm-5","name":"GLM-5"}}}}`), 0o644)
+	catalog.Reset()
+	t.Cleanup(catalog.Reset)
+	dir := filepath.Join(home, ".omp", "agent")
+	os.MkdirAll(dir, 0o755)
+	os.WriteFile(filepath.Join(dir, "config.yml"), []byte("modelRoles:\n  default: zai/glm-5\n"), 0o644)
+	os.WriteFile(filepath.Join(dir, "models.yml"), []byte(`providers:
+  codemaker:
+    baseUrl: https://codemaker.example/v1
+    api: openai-completions
+    models:
+      - id: claude-opus-5-5
+        name: Claude Opus 5.5
+      - id: glm-5
+  zai:
+    models:
+      - id: glm-5
+  lan:
+    baseUrl: http://127.0.0.1:8000/v1
+    api: openai-completions
+    discovery:
+      type: openai-models-list
+  magpie:
+    baseUrl: http://127.0.0.1:1/v1
+    auth: none
+    models:
+      - id: deepseek/pro
+`), 0o644)
+
+	opts := omp(home).Field("model").Options(map[string]string{"model": "zai/glm-5"})
+	byValue := map[string]Option{}
+	for _, o := range opts {
+		if _, dup := byValue[o.Value]; dup {
+			t.Fatalf("%s offered twice: %+v", o.Value, opts)
+		}
+		byValue[o.Value] = o
+	}
+	if o := byValue["codemaker/claude-opus-5-5"]; o.Label != "Claude Opus 5.5" || o.Group != "codemaker" {
+		t.Fatalf("codemaker model: %+v in %+v", o, opts)
+	}
+	if o := byValue["codemaker/glm-5"]; o.Label != "glm-5" {
+		t.Fatalf("model without a name: %+v in %+v", o, opts)
+	}
+	if _, ok := byValue["zai/glm-5"]; !ok {
+		t.Fatalf("the current provider's models.dev model is missing: %+v", opts)
+	}
+	// magpie has no provider here, so its entry's model comes from nowhere else
+	for v := range byValue {
+		if strings.HasPrefix(v, "lan/") || v == "magpie/deepseek/pro" {
+			t.Fatalf("%s offered: %+v", v, opts)
+		}
 	}
 }
