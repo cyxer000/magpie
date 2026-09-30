@@ -155,6 +155,7 @@ type ompModel struct {
 	Context   int          `yaml:"contextWindow,omitempty"`
 	MaxTokens int          `yaml:"maxTokens,omitempty"`
 	Input     []string     `yaml:"input,omitempty"`
+	Compat    *ompCompat   `yaml:"compat,omitempty"`
 }
 
 type ompThinking struct {
@@ -167,6 +168,16 @@ type ompProviderEntry struct {
 	API     string     `yaml:"api"`
 	Auth    string     `yaml:"auth"`
 	Models  []ompModel `yaml:"models"`
+}
+
+// ompCompat keeps omp on plain OpenAI for a model. omp picks a vendor's
+// dialect by the model's id (a qwen one gets enable_thinking and no
+// reasoning_effort), but magpie's gateway speaks OpenAI and translates for
+// each upstream itself, so a dialect would only hide the level asked. Off
+// stays omp's lowest level: omp 16.3.5 keeps a reasoningDisableMode of
+// none-effort but sends nothing for it.
+type ompCompat struct {
+	ThinkingFormat string `yaml:"thinkingFormat"`
 }
 
 // ompProvider is magpie's entry in models.yml. The thinking efforts are the
@@ -182,6 +193,18 @@ type ompProviderEntry struct {
 // nothing else, else on a budget: omp's anthropic-budget-effort would also
 // send output_config.effort, which Sonnet 4.5 and Haiku 4.5 refuse.
 func ompProvider() ompProviderEntry {
+	// DashScope's own endpoint, which the gateway relays chat requests to as
+	// they are, switches Qwen's thinking by enable_thinking. Its models are
+	// left to omp's own pick, so they ask as they always did; that is per
+	// model, as omp tells Qwen by the model's name. A routing group has no
+	// one upstream and gets plain OpenAI; Responses and Messages have no
+	// dialects to pick from.
+	dashscope := map[string]bool{}
+	shown, _ := provider.CatalogFor("omp")
+	for _, e := range shown {
+		h := provider.HostOf(e.Provider.Chat)
+		dashscope[e.ID] = e.Group == "" && strings.Contains(h, "dashscope") && strings.HasSuffix(h, ".aliyuncs.com")
+	}
 	ms := []ompModel{}
 	for _, m := range magpieModels("omp") {
 		e := ompModel{ID: m.ID, Name: m.Name, Context: m.Context, MaxTokens: m.Output}
@@ -204,6 +227,9 @@ func ompProvider() ompProviderEntry {
 			e.Input = []string{"text", "image"}
 		case m.ImageInput != nil:
 			e.Input = []string{"text"}
+		}
+		if e.API == "" && !dashscope[m.ID] {
+			e.Compat = &ompCompat{ThinkingFormat: "openai"}
 		}
 		var efforts []string
 		for _, x := range ompEfforts { // in omp's order

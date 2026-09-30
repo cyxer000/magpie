@@ -18,7 +18,20 @@ func TestOmp(t *testing.T) {
 	for _, k := range []string{"PI_CODING_AGENT_DIR", "PI_CONFIG_DIR", "OMP_PROFILE", "PI_PROFILE"} {
 		t.Setenv(k, "")
 	}
-	if err := provider.Save(provider.Provider{ID: "deepseek", Name: "DeepSeek", Chat: "https://api.deepseek.com/v1", Key: "k", Models: []string{"pro", "flash"}}); err != nil {
+	for _, p := range []provider.Provider{
+		{ID: "deepseek", Name: "DeepSeek", Chat: "https://api.deepseek.com/v1", Key: "k", Models: []string{"pro", "flash"}},
+		// Qwen at DashScope's own endpoint, a relay's Qwen, and a group of them
+		{ID: "bailian", Name: "Bailian", Chat: "https://dashscope.aliyuncs.com/compatible-mode/v1", Key: "k", Models: []string{"qwen3.7-plus", "glm-5"}},
+		{ID: "relay", Name: "Relay", Chat: "https://relay.example.com/v1", Key: "k", Models: []string{"qwen3.7-plus"}},
+		// asked on their own APIs, which have no dialects
+		{ID: "resp", Name: "Resp", Key: "k", Responses: "http://127.0.0.1:1/v1", Models: []string{"gpt-5.5"}},
+		{ID: "anth", Name: "Anth", Key: "k", Anthropic: "http://127.0.0.1:1", Models: []string{"claude-sonnet-5"}},
+	} {
+		if err := provider.Save(p); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := provider.SaveGroup(provider.Group{ID: "qwen-mix", Name: "Qwen mix", Members: []string{"bailian/qwen3.7-plus", "relay/qwen3.7-plus"}}); err != nil {
 		t.Fatal(err)
 	}
 	dir := filepath.Join(home, ".omp", "agent")
@@ -54,12 +67,26 @@ func TestOmp(t *testing.T) {
 	if !ok || ps["mine"] == nil || mp["auth"] != "none" || mp["api"] != "openai-completions" || !strings.HasSuffix(mp["baseUrl"].(string), "/v1") {
 		t.Fatalf("models:\n%s", raw)
 	}
-	ids := map[string]bool{}
+	compats, apis := map[string]any{}, map[string]any{}
 	for _, x := range mp["models"].([]any) {
-		ids[x.(map[string]any)["id"].(string)] = true
+		e := x.(map[string]any)
+		compats[e["id"].(string)], apis[e["id"].(string)] = e["compat"], e["api"]
 	}
-	if !ids["deepseek/pro"] || !ids["deepseek/flash"] {
-		t.Fatalf("models: %v", ids)
+	for _, id := range []string{"deepseek/pro", "deepseek/flash", "bailian/qwen3.7-plus", "bailian/glm-5", "relay/qwen3.7-plus", "group/qwen-mix", "resp/gpt-5.5", "anth/claude-sonnet-5"} {
+		if _, ok := compats[id]; !ok {
+			t.Fatalf("no %s in:\n%s", id, raw)
+		}
+	}
+	// magpie speaks plain OpenAI whatever the model, so omp must not switch
+	// to a vendor dialect by the model's id; but DashScope's own endpoint is
+	// relayed as sent and switches Qwen's thinking by enable_thinking, so its
+	// models are left to omp's own pick, as are those on Responses or Messages
+	for id, cp := range compats {
+		c, _ := cp.(map[string]any)
+		if plain := apis[id] == nil && !strings.HasPrefix(id, "bailian/"); plain != (c != nil) ||
+			plain && (c["thinkingFormat"] != "openai" || c["reasoningDisableMode"] != nil) {
+			t.Fatalf("%s compat %v:\n%s", id, cp, raw)
+		}
 	}
 
 	// its own model: magpie steps out
@@ -93,5 +120,21 @@ func TestOmp(t *testing.T) {
 	m, _ = read(modelsPath)
 	if roles(c)["default"] != nil || roles(c)["smol"] != "openai/gpt-6-mini" || c["theme"] != "dark" || providers(m)["magpie"] != nil || providers(m)["mine"] == nil {
 		t.Fatalf("reset: %v %v", c, m)
+	}
+
+	// an entry an older magpie wrote, without compat, gets it on sync
+	os.WriteFile(modelsPath, []byte("providers:\n  magpie:\n    baseUrl: http://127.0.0.1:1/v1\n    api: openai-completions\n    auth: none\n    models:\n      - id: deepseek/pro\n        reasoning: false\n"), 0o644)
+	if err := omp(home).Sync(); err != nil {
+		t.Fatal(err)
+	}
+	m, raw = read(modelsPath)
+	var synced map[string]any
+	for _, x := range providers(m)["magpie"].(map[string]any)["models"].([]any) {
+		if e := x.(map[string]any); e["id"] == "deepseek/pro" {
+			synced, _ = e["compat"].(map[string]any)
+		}
+	}
+	if synced["thinkingFormat"] != "openai" {
+		t.Fatalf("sync:\n%s", raw)
 	}
 }
