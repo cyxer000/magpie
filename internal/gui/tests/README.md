@@ -461,9 +461,12 @@ it as it is ("auto", "default"; 自动 in Chinese) at a stop of its own, a touch
 there posts nothing — it had shown the lowest level and a touch wrote it —
 and the next stop is the lowest level. A level past the ones offered (max,
 the levels going to high) stands after high, both ends reading "low … max"
-(低 … 最高) rather than "max … high", and a touch on it posts nothing. auto
-and the default light no bar of the effort icon or the panel's bars, where
-minimal lights one. Chromium and WebKit.
+(低 … 最高) rather than "max … high", and a touch on it posts nothing. The
+effort icon and the panel's bars light as far as the slider's stop goes: max
+past high all of them, medium between low and high two of three. auto, none
+and the default light no bar, where minimal lights one, and none is no level
+to count: Hermes at low, second of five, lights one of three. Chromium and
+WebKit.
 
 With Node.js and Playwright available:
 

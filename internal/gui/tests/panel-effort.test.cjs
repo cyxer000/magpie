@@ -4,9 +4,12 @@
 // agent with none set — rather than as the lowest level, which a touch on
 // the slider then wrote over it. A touch where it stands posts nothing; the
 // next stop is the lowest level. A level beyond those offered (max, the
-// model's going to high) stands in its place, after high. auto and the
-// default light no bar, where minimal lights one. In English and
-// Chinese. No backend: the API is faked here. ARTIFACT_DIR gets the slider.
+// model's going to high) stands in its place, after high, and lights the
+// bars in the list and the effort icon full; one between two offered lights
+// them as far as its stop. auto, none and the default light no bar, where
+// minimal lights one, and none counts for no level: Hermes at low, second
+// of five, lights one of three. In English and Chinese. No backend: the API
+// is faked here. ARTIFACT_DIR gets the slider and the panel's list.
 const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
 const path = require("node:path");
@@ -25,7 +28,10 @@ const state = { agents: [agent("omp", "omp", "auto"), agent("pi", "Pi", ""),
   agent("codex", "Codex", "max", some("low", "medium", "high")),
   // omp as magpie lists it now, auto first, and one at minimal beside it
   agent("omp-listed", "omp", "auto", [{ value: "auto" }, ...levels]),
-  agent("pi-minimal", "Pi", "minimal")], profiles: [] };
+  agent("pi-minimal", "Pi", "minimal"),
+  agent("kimi", "Kimi", "medium", some("low", "high")),
+  agent("grok", "Grok", "none", some("none", "minimal", "low", "medium", "high", "xhigh", "max")),
+  agent("hermes", "Hermes", "low", some("none", "minimal", "low", "medium", "high", "xhigh"))], profiles: [] };
 
 function server(lang, sets) {
   return async (route) => {
@@ -119,15 +125,25 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       assert.deepEqual(sets, [{ agent: "codex", field: "effort", value: "high" }]);
     });
 
-    await t.test("auto and minimal as bars", async () => {
+    await t.test("as bars", async () => {
       const lit = (page, id) => page.locator(`${row(id)} .field[data-key="effort"] .effort-ic rect[opacity="1"]`).count();
+      const ids = ["omp-listed", "pi-minimal", "codex", "kimi", "grok", "hermes"];
       const page = await load("en", [], "http://magpie.test/");
-      await page.locator(row("pi-minimal")).waitFor();
-      assert.deepEqual([await lit(page, "omp-listed"), await lit(page, "pi-minimal")], [0, 1]);
+      await page.locator(row("hermes")).waitFor();
+      const icons = [];
+      for (const id of ids) icons.push(await lit(page, id));
       const panel = await load("en", [], "http://magpie.test/?mode=panel");
-      const bars = (id) => panel.locator(`${row(id)} .ag-sum .eff`).getAttribute("data-l");
-      await panel.locator(row("pi-minimal")).waitFor();
-      assert.deepEqual([await bars("omp-listed"), await bars("pi-minimal")], ["0", "1"]);
+      await panel.locator(row("hermes")).waitFor();
+      const bars = [];
+      for (const id of ids) bars.push(Number(await panel.locator(`${row(id)} .ag-sum .eff`).getAttribute("data-l")));
+      if (process.env.ARTIFACT_DIR) {
+        await fs.mkdir(process.env.ARTIFACT_DIR, { recursive: true });
+        await panel.screenshot({ path: path.join(process.env.ARTIFACT_DIR, `${engine}-en-panel-effort-list.png`) });
+      }
+      // auto, minimal, max past high, medium between low and high, none, and
+      // low second of five (none not counted): of four in the icon, of three
+      // in the list
+      assert.deepEqual({ icons, bars }, { icons: [0, 1, 4, 3, 0, 2], bars: [0, 1, 3, 2, 0, 1] });
     });
 
     await t.test("in Chinese", async () => {
