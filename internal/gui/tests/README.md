@@ -459,7 +459,11 @@ WebKit.
 of the levels offered (omp at auto, an agent with none set): the slider shows
 it as it is ("auto", "default"; 自动 in Chinese) at a stop of its own, a touch
 there posts nothing — it had shown the lowest level and a touch wrote it —
-and the next stop is the lowest level. Chromium and WebKit.
+and the next stop is the lowest level. A level past the ones offered (max,
+the levels going to high) stands after high, both ends reading "low … max"
+(低 … 最高) rather than "max … high", and a touch on it posts nothing. auto
+and the default light no bar of the effort icon or the panel's bars, where
+minimal lights one. Chromium and WebKit.
 
 With Node.js and Playwright available:
 
