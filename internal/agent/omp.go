@@ -14,11 +14,14 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
+	"sort"
 	"strings"
 
+	"github.com/yetone/magpie/internal/catalog"
 	"github.com/yetone/magpie/internal/edit"
 	"github.com/yetone/magpie/internal/gateway"
 	"github.com/yetone/magpie/internal/provider"
+	"gopkg.in/yaml.v3"
 )
 
 // ompEfforts are the thinking levels omp knows.
@@ -164,7 +167,7 @@ func omp(home string) *Agent {
 				return dropMagpie()
 			},
 			Options: func(cur map[string]string) []Option {
-				return append(ownOptions("", cur["model"]), viaMagpie("omp", magpieID+"/")...)
+				return append(ompOwnOptions(pick("models"), cur["model"]), viaMagpie("omp", magpieID+"/")...)
 			},
 		}, {
 			// the thinking level sessions start with, as omp's settings save
@@ -258,4 +261,57 @@ func ompProvider() ompProviderEntry {
 		ms = append(ms, e)
 	}
 	return ompProviderEntry{BaseURL: gatewayV1(), API: "openai-completions", Auth: "none", Models: ms}
+}
+
+// ompOwnOptions lists the models of the providers the user added to omp's
+// models.yml, then the ones models.dev knows for the current value's
+// provider, each value once. A provider with only discovery has its models
+// listed by omp asking it at run time, out of magpie's sight, so it offers
+// none here.
+func ompOwnOptions(modelsFile, cur string) []Option {
+	var f struct {
+		Providers map[string]struct {
+			Models []struct {
+				ID   string `yaml:"id"`
+				Name string `yaml:"name"`
+			} `yaml:"models"`
+		} `yaml:"providers"`
+	}
+	if b, err := os.ReadFile(modelsFile); err == nil {
+		yaml.Unmarshal(b, &f)
+	}
+	providers := make([]string, 0, len(f.Providers))
+	for p := range f.Providers {
+		if p != magpieID {
+			providers = append(providers, p)
+		}
+	}
+	sort.Strings(providers)
+	seen := map[string]bool{}
+	var out []Option
+	for _, p := range providers {
+		name := catalog.ProviderName(p)
+		if name == "" {
+			name = p
+		}
+		for _, m := range f.Providers[p].Models {
+			v := p + "/" + m.ID
+			if m.ID == "" || seen[v] {
+				continue
+			}
+			seen[v] = true
+			label := m.Name
+			if label == "" {
+				label = m.ID
+			}
+			out = append(out, Option{Value: v, Label: label, Icon: modelIcon(p, m.ID), Group: name, GroupIcon: providerIcon(p)})
+		}
+	}
+	for _, o := range ownOptions("", cur) {
+		if !seen[o.Value] {
+			seen[o.Value] = true
+			out = append(out, o)
+		}
+	}
+	return out
 }
