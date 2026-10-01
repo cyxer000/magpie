@@ -610,7 +610,8 @@ func TestOmpListRoleRenamed(t *testing.T) {
 // models.yml, beside models.dev's for the current provider, spelled as
 // ownOptions spells them (the name as the note): not magpie's own entry, nor
 // a provider whose models omp only discovers at run time. A model named in
-// both keeps what models.dev knows of it.
+// both keeps what models.dev knows of it, and a provider in both stays one
+// group. Every role offers them, the subagents' as the model's.
 func TestOmpOwnModels(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
@@ -620,7 +621,7 @@ func TestOmpOwnModels(t *testing.T) {
 		t.Setenv(k, "")
 	}
 	os.MkdirAll(filepath.Dir(catalog.CachePath()), 0o755)
-	os.WriteFile(catalog.CachePath(), []byte(`{"zai":{"name":"Z.AI","models":{"glm-5":{"id":"glm-5","name":"GLM-5"}}}}`), 0o644)
+	os.WriteFile(catalog.CachePath(), []byte(`{"zai":{"name":"Z.AI","models":{"glm-5":{"id":"glm-5","name":"GLM-5"},"glm-6":{"id":"glm-6","name":"GLM-6"}}}}`), 0o644)
 	catalog.Reset()
 	t.Cleanup(catalog.Reset)
 	dir := filepath.Join(home, ".omp", "agent")
@@ -642,6 +643,9 @@ func TestOmpOwnModels(t *testing.T) {
     api: openai-completions
     discovery:
       type: openai-models-list
+  zzrelay:
+    models:
+      - id: m1
   magpie:
     baseUrl: http://127.0.0.1:1/v1
     auth: none
@@ -672,5 +676,22 @@ func TestOmpOwnModels(t *testing.T) {
 		if strings.HasPrefix(v, "lan/") || v == "magpie/deepseek/pro" {
 			t.Fatalf("%s offered: %+v", v, opts)
 		}
+	}
+	// zai is in models.yml and on models.dev, zzrelay after it: one group each
+	seen := map[string]bool{}
+	for i, o := range opts {
+		if i > 0 && o.Group != opts[i-1].Group {
+			if seen[o.Group] {
+				t.Fatalf("%s's models split in two: %+v", o.Group, opts)
+			}
+		}
+		seen[o.Group] = true
+	}
+	if _, ok := byValue["zai/glm-6"]; !ok {
+		t.Fatalf("models.dev's zai/glm-6 not offered: %+v", opts)
+	}
+	sub := omp(home).Field("subagent").Options(map[string]string{"model": "zai/glm-5"})
+	if !slices.ContainsFunc(sub, func(o Option) bool { return o.Value == "codemaker/claude-opus-5-5" }) {
+		t.Fatalf("the subagents' picker lacks models.yml's models: %+v", sub)
 	}
 }

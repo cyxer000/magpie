@@ -438,8 +438,10 @@ func ompProvider() ompProviderEntry {
 // models.yml, then the ones models.dev knows for the current value's
 // provider, spelled as ownOptions spells them (the model's name as the
 // note). A value offered twice is offered once, with the name and icon
-// either one had. A provider with only discovery has its models listed by
-// omp asking it at run time, out of magpie's sight, so it offers none here.
+// either one had. A provider in both stays one group, where it first comes:
+// the picker draws a heading at each change of group. A provider with only
+// discovery has its models listed by omp asking it at run time, out of
+// magpie's sight, so it offers none here.
 func ompOwnOptions(modelsFile, cur string) []Option {
 	var f struct {
 		Providers map[string]struct {
@@ -490,5 +492,12 @@ func ompOwnOptions(modelsFile, cur string) []Option {
 			out[i].GroupIcon = o.GroupIcon
 		}
 	}
+	first := map[string]int{}
+	for i, o := range out {
+		if _, ok := first[o.Group]; !ok {
+			first[o.Group] = i
+		}
+	}
+	sort.SliceStable(out, func(i, j int) bool { return first[out[i].Group] < first[out[j].Group] })
 	return out
 }
