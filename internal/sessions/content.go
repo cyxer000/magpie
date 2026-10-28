@@ -84,7 +84,7 @@ func keep(p Part) (Part, bool) {
 // ContentOf reads what was said in a call from its file.
 func ContentOf(c Call) (Content, error) {
 	out := Content{Input: []Part{}, Output: []Part{}}
-	if c.File == "" || c.Agent == "opencode" { // OpenCode's are rows, not lines of a file
+	if c.File == "" || OpenCodeLike(c.Agent) { // OpenCode's are rows, not lines of a file
 		return out, errNoPlace
 	}
 	var err error

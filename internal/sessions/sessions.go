@@ -621,7 +621,7 @@ func allFiles() []file {
 		filesHook()
 	}
 	var out []file
-	for _, fs := range [][]file{callFiles(), openCodeFiles(), piFiles(),
+	for _, fs := range [][]file{callFiles(), openCodeFiles(), sessionDirFiles(), piFiles(),
 		wslFiles("pi", "omp", "kimi"), zcodeFiles(), dshFiles(), clineFiles(), ccFiles("qoder", QoderDir("qoder")), ccFiles("qoder-cn", QoderDir("qoder-cn")),
 		grokFiles(), workbuddyFiles(), codebuddyFiles(), droidFiles(), ompFiles(), cursorFiles(), hermesFiles(), almaFiles(), kimiFiles(), agyFiles()} {
 		out = append(out, fs...)
@@ -686,6 +686,7 @@ func Dirs() []string {
 		out = append(out, d.dir)
 	}
 	out = append(out, HermesDirs()...)
+	out = append(out, sessionDirsThere()...)
 	out = append(out, wslDirs()...)
 	return out
 }
@@ -1612,7 +1613,7 @@ type sessionParser struct {
 }
 
 func parserFor(agent string) sessionParser {
-	switch agent {
+	switch ocKind(agent) {
 	case "hermes":
 		return sessionParser{whole: parseHermes}
 	case "alma":

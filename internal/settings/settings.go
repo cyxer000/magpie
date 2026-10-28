@@ -442,6 +442,12 @@ type Settings struct {
 	// (#1264): no distro is listed or probed for agents, their sessions or
 	// Claude Code, and the agents found there before aren't shown.
 	NoWSLAgents bool `json:"noWSLAgents,omitempty"`
+	// SessionDirs are the folders of agents magpie doesn't know whose
+	// sessions are kept in a format it reads (an OpenCode fork's data
+	// folder), each listed on the Sessions page and counted on Usage under
+	// its own agent id. In settings.json only, and this computer's own
+	// (KeepOwn): the folders are this computer's.
+	SessionDirs []SessionDir `json:"sessionDirs,omitempty"`
 	// KeepAwakeDisplay keeps the display on too while KeepAwake holds the
 	// computer awake (#975, Hu9956: an agent recording the screen to check
 	// its work found it locked). This computer's own (KeepOwn).
@@ -779,6 +785,16 @@ type Settings struct {
 	WindowMaximised bool `json:"windowMaximised,omitempty"`
 }
 
+// SessionDir is an agent's sessions folder magpie reads in a format it
+// knows: Agent is the id they are listed and counted under, Format the
+// reader ("opencode": Dir is the data folder holding opencode.db), Dir the
+// folder, "~" its user's home.
+type SessionDir struct {
+	Agent  string `json:"agent"`
+	Format string `json:"format"`
+	Dir    string `json:"dir"`
+}
+
 // ModelPrice is the price of one model as the user states it. Each part is a
 // pointer so that a file leaving one out is told so rather than billing that
 // part of the call at zero: a model is priced whole or not at all.
@@ -1000,6 +1016,9 @@ var DefaultTextSize = func() int {
 
 var validTerminalBundleID = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9.-]{0,254}$`)
 
+// validSessionAgent is the id a SessionDir's sessions go under.
+var validSessionAgent = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,63}$`)
+
 // providerID is how a provider's id is spelled: lower-case letters, digits
 // and dashes, as provider.Slug derives it (a custom provider's id is the
 // same, the site it is on when its name has none).
@@ -1119,7 +1138,7 @@ func (s *Settings) KeepOwn(cur Settings) {
 	s.WindowMaximised, s.KeepAwake, s.KeepAwakeDisplay = cur.WindowMaximised, cur.KeepAwake, cur.KeepAwakeDisplay
 	s.TrayUsages, s.TrayUsage, s.TrayUsageEvery, s.TrayNoLogos, s.TrayNoBird, s.TrayPace, s.TrayNoCost = cur.TrayUsages, cur.TrayUsage, cur.TrayUsageEvery, cur.TrayNoLogos, cur.TrayNoBird, cur.TrayPace, cur.TrayNoCost
 	s.GatewayMode = cur.GatewayMode
-	s.NoWSLAgents = cur.NoWSLAgents
+	s.NoWSLAgents, s.SessionDirs = cur.NoWSLAgents, cur.SessionDirs
 	s.QuotaReads = cur.QuotaReads
 	s.NoAccountDiscovery = cur.NoAccountDiscovery
 	s.LAN, s.AllowIPs = cur.LAN, cur.AllowIPs
@@ -1517,6 +1536,17 @@ func save(s Settings, recording bool) error {
 	}
 	if s.SessionTerminal != "" && s.SessionTerminal != "system" && !validTerminalBundleID.MatchString(s.SessionTerminal) {
 		return fmt.Errorf("session terminal must be an app bundle id or system, not %q", s.SessionTerminal)
+	}
+	for _, d := range s.SessionDirs {
+		if d.Format != "opencode" {
+			return fmt.Errorf("a sessions folder's format must be opencode, not %q", d.Format)
+		}
+		if !validSessionAgent.MatchString(d.Agent) {
+			return fmt.Errorf("a sessions folder's agent must be a lowercase id like my-agent, not %q", d.Agent)
+		}
+		if d.Dir == "" {
+			return fmt.Errorf("the sessions folder of %s names no dir", d.Agent)
+		}
 	}
 	for _, choice := range []*fonts.Face{s.UIFont, s.CodeFont} {
 		if err := fonts.Validate(choice); err != nil {

@@ -46,7 +46,7 @@ func subagentsOf(s Session, fs []file) []Subagent {
 			continue
 		}
 		sa := Subagent{Start: st.Start, Last: st.Last, Path: f.path}
-		switch s.Agent {
+		switch ocKind(s.Agent) {
 		case "claude", "qoder", "qoder-cn":
 			sa.ID = SubagentOf(f.path)
 			// a compaction's own run (agent-acompact-<id>.jsonl) is no

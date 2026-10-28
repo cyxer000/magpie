@@ -145,7 +145,7 @@ func openCodeFiles() []file {
 	if db := openCodeDB(); fileExists(db) {
 		return openCodeDBFiles("opencode", db)
 	}
-	return openCodeJSONFiles(filepath.Join(OpenCodeDir(), "storage"))
+	return openCodeJSONFiles("opencode", filepath.Join(OpenCodeDir(), "storage"))
 }
 
 func fileExists(p string) bool {
@@ -241,7 +241,7 @@ func openCodeDBFilesIn(agent, path string, db *sql.DB, size string) []file {
 	parent := map[string]string{}
 	old := fmt.Sprintf(q, "session", "message", "")
 	var out []file
-	if agent == "opencode" && ocHasTable(db, "session_v2") {
+	if ocKind(agent) == "opencode" && ocHasTable(db, "session_v2") {
 		out = ocDBRows(db, fmt.Sprintf(q, "session_v2", "session_message", ""), agent, path, ocV2DB{db}, parent)
 		switch {
 		case !ocHasTable(db, "session") || ocMigrated(db):
@@ -402,7 +402,7 @@ func (s ocV2DB) parts(mid string) [][]byte {
 
 type ocFiles struct{ root string } // storage/
 
-func openCodeJSONFiles(root string) []file {
+func openCodeJSONFiles(agent, root string) []file {
 	infos, _ := filepath.Glob(filepath.Join(root, "session", "*", "*.json"))
 	store := ocFiles{root}
 	var out []file
@@ -413,7 +413,7 @@ func openCodeJSONFiles(root string) []file {
 		if err != nil || json.Unmarshal(b, &i) != nil || i.ID == "" {
 			continue
 		}
-		f := file{agent: "opencode", path: p, more: &fileMore{sid: i.ID, oc: store}}
+		f := file{agent: agent, path: p, more: &fileMore{sid: i.ID, oc: store}}
 		if !stat(&f) {
 			continue
 		}

@@ -183,6 +183,7 @@ func TestSettingsSaveKeepsWhatItDoesNotSend(t *testing.T) {
 		RedactModel:          true,
 		RedactModelName:      "astrlink-guard",
 		RedactModelScore:     map[string]float64{"astrlink-guard": 0.9},
+		SessionDirs:          []settings.SessionDir{{Agent: "fork-cli", Format: "opencode", Dir: "~/.local/share/fork-cli"}},
 	}
 	was.DesktopSubagentEffort = "high"
 	was.CodexAsyncCompact, was.CodexAsyncCompactPercent = true, 70

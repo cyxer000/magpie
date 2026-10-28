@@ -430,6 +430,28 @@ Verification: `TestAgySessions`, `TestAgyTitleLater`, `TestAgyGrows`,
 `TestAgyTranscript`, `TestAgyFolder`, `TestAgyRowOnly`, on conversations agy 1.3.5 and 1.4.7
 wrote in a sandbox.
 
+An agent magpie doesn't know whose sessions are kept in a format it reads
+is named in `settings.json` (no page sets it, and a sync or backup from
+another computer doesn't bring it):
+
+```json
+"sessionDirs": [{"agent": "my-agent", "format": "opencode", "dir": "~/.local/share/my-agent"}]
+```
+
+`format` names the reader, and `opencode` is the only one: `dir` is an
+OpenCode data folder, its `opencode.db` or else its `storage/` JSON
+files, as an OpenCode fork keeps them under a name of its own.
+Its sessions are listed on the Sessions page and counted on Usage under
+`agent`, read as OpenCode's are (`sessionDirFiles`,
+`sessionDirCallFiles` in
+[`session_dirs.go`](../../internal/sessions/session_dirs.go); the
+readers ask `ocKind` for the format), with transcripts and subagents and
+no resume command, as magpie doesn't know the agent's. `agent` is a
+lower-case id; an entry naming an agent magpie reads itself (`claude`,
+`opencode`, …: `ownSessionAgents`) is left out, so its own sessions keep
+their reader. Verification: `TestSessionDirsOpenCodeFormat`,
+`TestSessionDirsKeepOwnAgents`.
+
 A read of every call decodes each file's cached shard, and over a long
 history that is tens of thousands of files (#2278: 68k shards, 415 MB).
 Asks for the same calls while one read is under way wait for it and get

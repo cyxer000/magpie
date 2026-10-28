@@ -29,7 +29,7 @@ var ErrNoTranscript = errors.New("this agent's conversations can't be shown")
 // HasTranscript says whether an agent's sessions can be read as a
 // transcript.
 func HasTranscript(agent string) bool {
-	switch agent {
+	switch ocKind(agent) {
 	case "claude", "qoder", "qoder-cn", "codex", "pi", "omp", "cursor", "opencode", "kimi", "agy":
 		return true
 	}
@@ -78,7 +78,7 @@ func readTranscript(s Session, add func(bool, Part) bool) error {
 // read whole.
 func readTranscriptOf(s Session, keep func([]byte) bool, add func(bool, Part) bool) error {
 	whole := Call{Agent: s.Agent, File: s.Path, To: math.MaxInt64}
-	switch s.Agent {
+	switch ocKind(s.Agent) {
 	case "opencode":
 		return openCodeTranscript(s, add)
 	case "cursor":

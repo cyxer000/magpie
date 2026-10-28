@@ -308,7 +308,7 @@ func readCalls(f file) *callFile {
 		callsMu.Unlock()
 		return st
 	}
-	if read, ok := wholeCallReaders[f.agent]; ok {
+	if read, ok := wholeCallReaders[ocKind(f.agent)]; ok {
 		st, readOK := read(f)
 		if !readOK && old != nil {
 			return old // not readable now: what was read before

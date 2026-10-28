@@ -29,36 +29,48 @@ import (
 // ocGatewayProvider is whether an OpenCode provider id is magpie's gateway.
 func ocGatewayProvider(id string) bool { return id == "magpie" || id == "dial" }
 
-// ocCallList is the last listing of OpenCode's database, kept while the
-// database and its WAL are as they were.
+// ocCallList is the last listing of each OpenCode-like database, by its
+// path, kept while the database and its WAL are as they were.
 var ocCallList struct {
 	sync.Mutex
+	by map[string]ocCallListing
+}
+
+type ocCallListing struct {
 	stamp string
 	files []file
 }
 
 // openCodeCallFiles are OpenCode's sessions as call sources.
 func openCodeCallFiles() []file {
-	path := openCodeDB()
+	return ocCallFilesIn("opencode", openCodeDB(), filepath.Join(OpenCodeDir(), "storage"))
+}
+
+// ocCallFilesIn are an OpenCode-like agent's sessions as call sources: those
+// in its database at path, else in its JSON files under storage.
+func ocCallFilesIn(agent, path, storage string) []file {
 	if !fileExists(path) {
-		return openCodeJSONFiles(filepath.Join(OpenCodeDir(), "storage"))
+		return openCodeJSONFiles(agent, storage)
 	}
 	stamp := ocStamp(path)
 	ocCallList.Lock()
 	defer ocCallList.Unlock()
-	if stamp != "" && stamp == ocCallList.stamp {
-		return append([]file(nil), ocCallList.files...)
+	if l, ok := ocCallList.by[path]; ok && stamp != "" && stamp == l.stamp {
+		return append([]file(nil), l.files...)
 	}
 	var out []file
 	// the size is the sum of the messages' times as well as their count, so
 	// an older message written again tells too, not only the latest
 	withOCCallDB(path, func(db *sql.DB) {
-		out = openCodeDBFilesIn("opencode", path, db, "COUNT(m.id) + COALESCE(SUM(m.time_updated), 0)")
+		out = openCodeDBFilesIn(agent, path, db, "COUNT(m.id) + COALESCE(SUM(m.time_updated), 0)")
 	})
 	for i := range out {
 		out[i].w().oc = nil // the handle is not kept; a read opens it again
 	}
-	ocCallList.stamp, ocCallList.files = stamp, out
+	if ocCallList.by == nil {
+		ocCallList.by = map[string]ocCallListing{}
+	}
+	ocCallList.by[path] = ocCallListing{stamp, out}
 	return append([]file(nil), out...)
 }
 
@@ -133,7 +145,7 @@ func withOCCallDB(path string, fn func(*sql.DB)) bool {
 // resetOCCalls forgets the listing and closes the handles nothing is using.
 func resetOCCalls() {
 	ocCallList.Lock()
-	ocCallList.stamp, ocCallList.files = "", nil
+	ocCallList.by = nil
 	ocCallList.Unlock()
 	ocCallDBs.Lock()
 	defer ocCallDBs.Unlock()
@@ -213,7 +225,7 @@ func ocCall(st *callFile, m ocMessage, dir string) (Call, bool) {
 	if at.IsZero() {
 		return Call{}, false
 	}
-	c := Call{Time: at, Agent: "opencode", Session: st.Session, Model: st.str(m.ModelID), Upstream: st.str(m.ProviderID),
+	c := Call{Time: at, Agent: st.Agent, Session: st.Session, Model: st.str(m.ModelID), Upstream: st.str(m.ProviderID),
 		Cwd: st.str(dir), File: st.Path, Msg: m.ID}
 	if m.Path != nil && m.Path.Cwd != "" {
 		c.Cwd = st.str(m.Path.Cwd)

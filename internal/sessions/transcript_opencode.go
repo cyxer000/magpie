@@ -14,7 +14,7 @@ func openCodeTranscript(s Session, add func(bool, Part) bool) error {
 	// opened and given back under it, and read from without it
 	mu.Lock()
 	release := useDBs()
-	files := openCodeFiles()
+	files := ocFilesOf(s.Agent)
 	mu.Unlock()
 	defer func() {
 		mu.Lock()

@@ -356,7 +356,7 @@ func logRecord(c sessions.Call) Record {
 		r.ResponseID = c.ResponseID
 		r.Compaction = codexCompactionOf(c)
 	}
-	if c.Agent == "codex" || c.Agent == "opencode" {
+	if c.Agent == "codex" || sessions.OpenCodeLike(c.Agent) {
 		r.Requested, r.Served = c.Model, ""
 	}
 	if r.Requested != "" {

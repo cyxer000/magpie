@@ -262,7 +262,7 @@ func SearchSession(ctx context.Context, s Session, needle string) (Hit, bool, er
 // OpenCode session's is its info (the messages are elsewhere) or a database,
 // and a Cursor chat's a database too, whose newest pages are in its -wal.
 func linesFile(s Session) bool {
-	switch s.Agent {
+	switch ocKind(s.Agent) {
 	case "opencode":
 		return false
 	case "cursor":

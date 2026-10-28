@@ -336,6 +336,7 @@ func callSources() []file { return callSourcesWith(codexFiles()) }
 func callSourcesWith(codex []file) []file {
 	out := callFilesWith(codex)
 	out = append(out, openCodeCallFiles()...)
+	out = append(out, sessionDirCallFiles()...)
 	out = append(out, zcodeCallFiles()...)
 	out = append(out, dshCallFiles()...)
 	out = append(out, minimaxCallFiles()...)

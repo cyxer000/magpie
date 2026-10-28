@@ -81,7 +81,7 @@ func (r *TraceReader) pollOpenCode(bodies bool, budget *int64) []TraceSpan {
 		r.ocStamp, r.ocPending = stamp, pending
 		return out
 	}
-	files := openCodeJSONFiles(filepath.Join(OpenCodeDir(), "storage"))
+	files := openCodeJSONFiles("opencode", filepath.Join(OpenCodeDir(), "storage"))
 	for i, f := range files {
 		if store, ok := f.m().oc.(ocFiles); ok {
 			for _, message := range readDirectory(filepath.Join(store.root, "message", f.m().sid)) {
